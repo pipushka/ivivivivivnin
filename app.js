@@ -17,48 +17,74 @@ const legendaryData=[
 const pearls=[15,25,35,45,55].map(v=>({name:`Жемчуг ${v}`,qty:Infinity,cat:"pearl"}));
 const sum=a=>a.reduce((s,x)=>s+x,0), ORD_TOTAL=sum(ordinaryData.map(x=>x.qty)), RARE_COMMON=sum(rareData.map(x=>x.qty)), RARE_KITTEN=RARE_COMMON+10, LEG_TOTAL=sum(legendaryData.map(x=>x.qty));
 const config={kitten:{days:14,yellow:2,red:0},warrior:{days:31,yellow:4,red:1}};
-const dayOdds={green:{ord:.5,rare:0,leg:0,pearl:.5},yellow:{ord:.5,rare:.03,leg:0,pearl:.47},red:{ord:.5,rare:.03,leg:.001,pearl:.469}};
+const dayOdds={
+  green:{ord:.50,rare:0,leg:0,pearl:.50},
+  yellow:{ord:.50,rare:.10,leg:0,pearl:.40},
+  red:{ord:.50,rare:.10,leg:.05,pearl:.35}
+};
 let mode="kitten";
 const $=id=>document.getElementById(id), pct=n=>(n*100).toFixed(5).replace(/0+$/,"").replace(/\.$/,"")+"%";
 function pick(entries){let r=Math.random()*sum(entries.map(e=>e.w));for(const e of entries){r-=e.w;if(r<0)return e.v;}return entries.at(-1).v;}
 function makeDays(){const c=config[mode],a=Array(c.days-c.yellow-c.red).fill("green").concat(Array(c.yellow).fill("yellow"),Array(c.red).fill("red"));for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function inventory(){return {ord:ordinaryData.map(x=>({...x,left:x.qty})),rare:rareData.concat(mode==="kitten"?[kittenRare]:[]).map(x=>({...x,left:x.qty})),leg:legendaryData.map(x=>({...x,left:x.qty}))};}
-function draw(type,inv){const o=dayOdds[type],e=[],ordLeft=sum(inv.ord.map(x=>x.left));let pearl=o.pearl+(ordLeft===0?o.ord:0);
-if(ordLeft)e.push({w:o.ord,v:{bucket:"ord"}});
-const denom=mode==="kitten"?RARE_KITTEN:RARE_COMMON;
-for(const x of inv.rare){let p=o.rare*x.qty/denom;if(x.left&&p)e.push({w:p,v:x});else pearl+=p;}
-for(const x of inv.leg){let p=o.leg*x.qty/LEG_TOTAL;if(x.left&&p)e.push({w:p,v:x});else pearl+=p;}
-for(const x of pearls)e.push({w:pearl/5,v:x});
-let x=pick(e);if(x.bucket){x=pick(inv.ord.filter(a=>a.left).map(a=>({w:a.left,v:a})));x.left--;}else if(x.cat!=="pearl")x.left--;
-return {name:x.name,cat:x.cat,type};}
+function draw(type,inv){
+  const o=dayOdds[type],e=[];
+  const denom=mode==="kitten"?RARE_KITTEN:RARE_COMMON;
+  let pearl=o.pearl;
+  // У каждой позиции есть собственный фиксированный вес от исходного запаса.
+  // Когда запас позиции исчерпан, именно её вес переходит жемчугу.
+  for(const x of inv.ord){
+    const p=o.ord*x.qty/ORD_TOTAL;
+    if(x.left>0&&p>0)e.push({w:p,v:x});else pearl+=p;
+  }
+  for(const x of inv.rare){
+    const p=o.rare*x.qty/denom;
+    if(x.left>0&&p>0)e.push({w:p,v:x});else pearl+=p;
+  }
+  for(const x of inv.leg){
+    const p=o.leg*x.qty/LEG_TOTAL;
+    if(x.left>0&&p>0)e.push({w:p,v:x});else pearl+=p;
+  }
+  for(const x of pearls)e.push({w:pearl/5,v:x});
+  const x=pick(e);
+  if(x.cat!=="pearl")x.left--;
+  return {name:x.name,cat:x.cat,type};
+}
 function run(){let inv=inventory();return makeDays().map((type,i)=>({day:i+1,...draw(type,inv)}));}
 function label(c){return ({ordinary:"Обычная",rare:"Редкая",legendary:"Легендарная",pearl:"Жемчуг"})[c];}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function showResults(a){$("windows").className="windows";$("windows").innerHTML=a.map(x=>`<div class="window ${x.type}"><span class="day">ДЕНЬ ${x.day}</span><span class="kind">${x.type==="green"?"обычный":x.type==="yellow"?"редкий пул":"легендарный пул"}</span><span class="prize">${esc(x.name)}</span><span class="tag">${label(x.cat)}</span></div>`).join("");let c={};a.forEach(x=>c[x.name]=(c[x.name]||0)+1);$("outcomes").innerHTML=`<div class="outlist">${Object.entries(c).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="out"><span>${esc(n)}</span><b>× ${v}</b></div>`).join("")}</div>`;}
-function catalog(){const denom=mode==="kitten"?RARE_KITTEN:RARE_COMMON;return [
-...ordinaryData.map(x=>({...x,p:.5*x.qty/ORD_TOTAL})),
-...rareData.map(x=>({...x,p:.03*x.qty/denom})),
-...(mode==="kitten"?[{...kittenRare,p:.03*10/denom}]:[]),
-...legendaryData.map(x=>({...x,p:.001*x.qty/LEG_TOTAL})),
-...pearls.map(x=>({...x,p:null}))
-];}
-function showCatalog(){let q=$("search").value.toLocaleLowerCase("ru"),f=$("filter").value;let a=catalog().filter(x=>(f==="all"||x.cat===f)&&x.name.toLocaleLowerCase("ru").includes(q));$("catalog").innerHTML=a.map(x=>`<tr><td>${esc(x.name)}</td><td>${label(x.cat)}</td><td>${x.qty===Infinity?"∞":x.qty}</td><td>${x.cat==="pearl"?"10% / 9,4% / 9,38%*":pct(x.p)}</td></tr>`).join("")||'<tr><td colspan="4">Ничего не найдено</td></tr>';}
+function catalog(){
+  const denom=mode==="kitten"?RARE_KITTEN:RARE_COMMON;
+  const rareItem=(qty)=>({green:0,yellow:.10*qty/denom,red:.10*qty/denom});
+  const legItem=(qty)=>({green:0,yellow:0,red:.05*qty/LEG_TOTAL});
+  const pearlItem={green:.10,yellow:.08,red:.07};
+  return [
+    ...ordinaryData.map(x=>({...x,odds:{green:.50*x.qty/ORD_TOTAL,yellow:.50*x.qty/ORD_TOTAL,red:.50*x.qty/ORD_TOTAL}})),
+    ...rareData.map(x=>({...x,odds:rareItem(x.qty)})),
+    ...(mode==="kitten"?[{...kittenRare,odds:rareItem(kittenRare.qty)}]:[]),
+    ...legendaryData.map(x=>({...x,odds:legItem(x.qty)})),
+    ...pearls.map(x=>({...x,odds:pearlItem}))
+  ];
+}
+function showCatalog(){
+  const q=$("search").value.toLocaleLowerCase("ru"),f=$("filter").value;
+  const a=catalog().filter(x=>(f==="all"||x.cat===f)&&x.name.toLocaleLowerCase("ru").includes(q));
+  $("catalog").innerHTML=a.map(x=>`<tr><td>${esc(x.name)}</td><td>${label(x.cat)}</td><td>${x.qty===Infinity?"∞":x.qty}</td><td>${pct(x.odds.green)}</td><td>${pct(x.odds.yellow)}</td><td>${pct(x.odds.red)}</td></tr>`).join("")||'<tr><td colspan="6">Ничего не найдено</td></tr>';
+}
 function batch(){
   let n=Math.max(1,Math.min(10000,Number($("runs").value)||1)),counts={},draws=0;
   for(let i=0;i<n;i++){for(const x of run()){counts[x.name]=(counts[x.name]||0)+1;draws++;}}
-  const c=config[mode], dayCount={green:c.days-c.yellow-c.red,yellow:c.yellow,red:c.red};
+  const c=config[mode],green=c.days-c.yellow-c.red;
   const theoretical=x=>{
-    if(x.cat==="ordinary") return x.p;
-    if(x.cat==="rare") return x.p*(dayCount.yellow+dayCount.red)/c.days;
-    if(x.cat==="legendary") return x.p*dayCount.red/c.days;
-    const base=(dayCount.green*.5+dayCount.yellow*.47+dayCount.red*.469)/(c.days*5);
-    return base;
+    const o=x.odds;
+    return (green*o.green+c.yellow*o.yellow+c.red*o.red)/c.days;
   };
-  let a=catalog().filter(x=>x.cat!=="pearl"||counts[x.name]);
+  const a=catalog().filter(x=>x.cat!=="pearl"||counts[x.name]);
   $("batch").innerHTML=`<p class="muted">${n.toLocaleString("ru-RU")} адвентов · ${draws.toLocaleString("ru-RU")} открытий</p>
   <div class="tablewrap"><table><thead><tr><th>Награда</th><th>Выпало</th><th>Фактическая частота</th><th>Теоретическая частота*</th></tr></thead>
   <tbody>${a.map(x=>`<tr><td>${esc(x.name)}</td><td>${counts[x.name]||0}</td><td>${pct((counts[x.name]||0)/draws)}</td><td>${pct(theoretical(x))}</td></tr>`).join("")}</tbody></table></div>
-  <p class="muted">* Теоретическая частота усреднена по всем дням выбранного режима: редкие учитываются только в жёлтые/красный дни, легендарные — только в красный. Для жемчуга показан базовый шанс без добавок от исчерпанных предметов. Фактическая частота учитывает всё перераспределение и расход запасов.</p>`;
+  <p class="muted">* Теоретическая частота рассчитана по доле зелёных, жёлтых и красных окон в выбранном режиме и не учитывает исчерпание конечных запасов. Фактическая частота учитывает расход предметов и перенос освободившегося шанса в жемчуг.</p>`;
 }
 function updateMode(){mode=document.querySelector('input[name=mode]:checked').value;$("days").textContent=config[mode].days;$("legend").textContent=mode==="warrior"?"0,1%":"—";showCatalog();$("windows").className="windows muted";$("windows").textContent="Нажми «Сгенерировать адвент»";$("outcomes").textContent="Здесь появится список наград.";$("batch").innerHTML="";}
 $("generate").onclick=()=>showResults(run());$("simulate").onclick=batch;$("reset").onclick=updateMode;document.querySelectorAll('input[name=mode]').forEach(x=>x.onchange=updateMode);$("search").oninput=showCatalog;$("filter").onchange=showCatalog;updateMode();
